@@ -27,41 +27,60 @@ function App() {
 
   // ── Handle form submission ────────────────────────────────
   // Stage 3: this just simulates a response.
-  // Stage 4: we'll replace this with a real fetch() to FastAPI.
+  // ── Real API call ─────────────────────────────────────────
   const handleSubmit = async ({ jobRole, experienceLevel, techStack }) => {
     setIsLoading(true)
     setError(null)
     setQuestions(null)
 
-    // ── TEMPORARY mock response for Stage 3 ──────────────
-    // We're just testing the UI works correctly.
-    // Replace this entire block in Stage 4 with a real API call.
-    setTimeout(() => {
-      setQuestions({
-        beginner_questions: [
-          `What is the difference between a list and a tuple in ${techStack}?`,
-          `Explain what an API is in simple terms.`,
-          `What is ${jobRole}'s primary responsibility in a team?`,
-          `What does HTTP stand for and what are common status codes?`,
-          `What is version control and why do ${jobRole}s use it?`,
-        ],
-        intermediate_questions: [
-          `How would you design a REST API for a ${jobRole} role?`,
-          `Explain async vs sync programming in ${techStack}.`,
-          `How do you handle authentication in a ${techStack} application?`,
-          `What is database indexing and when would you use it?`,
-          `Describe a CI/CD pipeline you would set up as a ${experienceLevel} ${jobRole}.`,
-        ],
-        advanced_questions: [
-          `How would you scale a ${techStack} system to 1M users?`,
-          `Design a microservices architecture for a ${jobRole} team.`,
-          `Explain the CAP theorem and its trade-offs in ${techStack}.`,
-          `How do you debug a memory leak in a production ${techStack} app?`,
-          `What strategies ensure zero-downtime deployments for a ${jobRole}?`,
-        ],
+    try {
+      // fetch() sends an HTTP request.
+      // We use /api/generate-questions (not the full localhost URL)
+      // because Vite's proxy will forward it to FastAPI.
+      const response = await fetch('/api/generate-questions', {
+        method: 'POST',
+
+        // Tell the server we're sending JSON
+        headers: {
+          'Content-Type': 'application/json',
+        },
+
+        // JSON.stringify converts the JS object to a JSON string
+        // to match FastAPI's QuestionRequest model fields exactly
+        body: JSON.stringify({
+          job_role: jobRole,
+          experience_level: experienceLevel,
+          tech_stack: techStack,
+        }),
       })
+
+      // ── Handle HTTP errors ──────────────────────────────
+      // fetch() does NOT throw on 4xx/5xx — you must check manually.
+      // response.ok is true for status codes 200-299.
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `Server error: ${response.status}`)
+      }
+
+      // ── Parse JSON response ─────────────────────────────
+      // response.json() reads the response body and parses it
+      // into a JavaScript object matching QuestionResponse
+      const data = await response.json()
+      setQuestions(data)
+
+    } catch (err) {
+      // Network errors (backend offline) or thrown errors above
+      console.error('[API Error]', err)
+      setError(
+        err.message.includes('Failed to fetch')
+          ? 'Cannot reach the backend. Is FastAPI running on port 8000?'
+          : err.message
+      )
+    } finally {
+      // finally always runs — whether success or error.
+      // Perfect for cleaning up loading state.
       setIsLoading(false)
-    }, 1800) // simulate network delay
+    }
   }
 
   return (
