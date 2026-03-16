@@ -1,3 +1,7 @@
+# ============================================================
+# main.py — Stage 5: richer response model + seniority context
+# ============================================================
+
 import os
 import json
 
@@ -8,133 +12,120 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema.output_parser import StrOutputParser
 
-from prompts import INTERVIEW_PROMPT_TEMPLATE
+from prompts import INTERVIEW_PROMPT_TEMPLATE, SENIORITY_CONTEXT
 
-
-# load the env file
 load_dotenv()
 
-# Validate if key exists at startup
 if not os.getenv("GOOGLE_API_KEY"):
-    raise ValueError("GOOGLE_API_KEY not found. Please check if you created an env file with the API key.")
+    raise ValueError("GOOGLE_API_KEY not found. Did you create a .env file?")
 
-# App iinstance creation
 app = FastAPI(
-    title="AI Interviewer",
-    description="Generates interview questions based on role, experience, and tech stack",
-    version="2.0.0"
+    title="AI Interview Question Generator",
+    description="Generates rich interview questions using Google Gemini",
+    version="3.0.0",
 )
 
-# CORS Middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins = ["*"],
-    allow_methods = ["*"],
-    allow_headers = ["*"]
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# ── Gemini LLM setup ─────────────────────────────────────────
-# gemini-2.0-flash is fast and completely free on the free tier
-# temperature=0.7 means slightly creative but not too random
-# (0.0 = deterministic, 1.0 = very creative)
 llm = ChatGoogleGenerativeAI(
-    model = "gemini-2.5-flash",
-    temperature = 0.7
+    model="gemini-2.5-flash",
+    temperature=0.7,
 )
 
-# ── LangChain pipeline (called a "chain") ────────────────────
-# The | operator pipes output from one step into the next:
-#   1. INTERVIEW_PROMPT_TEMPLATE  → fills in {job_role} etc.
-#   2. llm                        → sends prompt to Gemini
-#   3. StrOutputParser()          → extracts raw text from response
-#
-# This is called an LCEL chain (LangChain Expression Language)
 chain = INTERVIEW_PROMPT_TEMPLATE | llm | StrOutputParser()
 
-# ── 3. Request model ─────────────────────────────────────────
-# Pydantic BaseModel validates incoming JSON automatically.
-# If a required field is missing or the wrong type, FastAPI
-# returns a clear 422 error before your code even runs.
-class QuestionRequest(BaseModel) :
+# ── Request model ─────────────────────────────────────────────
+class QuestionRequest(BaseModel):
     job_role: str
-    experience_level:  str
+    experience_level: str
     tech_stack: str
 
-# ── 4. Response model ────────────────────────────────────────
-# Defines the exact shape of data we send back to the client.
+# ── Rich question model ───────────────────────────────────────
+# Each question is now an object, not just a plain string.
+# Pydantic validates that every field is present and is a string.
+class RichQuestion(BaseModel):
+    question: str
+    hint: str
+    what_interviewer_looks_for: str
+    follow_up: str
+
+# ── Response model ────────────────────────────────────────────
 class QuestionResponse(BaseModel):
     job_role: str
     experience_level: str
     tech_stack: str
-    beginner_questions: list[str]
-    intermediate_questions: list[str]
-    advanced_questions: list[str]
+    beginner_questions: list[RichQuestion]
+    intermediate_questions: list[RichQuestion]
+    advanced_questions: list[RichQuestion]
 
-# ── 6. Health-check endpoint ─────────────────────────────────
-# A simple GET endpoint so we can verify the server is alive.
-# Visit http://localhost:8000/ in your browser to test it.
+# ── Health check ──────────────────────────────────────────────
 @app.get("/")
 def root():
-    return {"message": "Interview Questions Generator API is running!!" }
+    return {"message": "AI Interview Question Generator v3 is running!"}
 
+# ── Main endpoint ─────────────────────────────────────────────
 @app.post("/generate-questions", response_model=QuestionResponse)
-async def generateQuestions(request: QuestionRequest):
-    """
-    Calls Gemini via LangChain to generate interview questions.
-    The chain fills in the prompt template, sends it to Gemini,
-    and returns the raw text. We then parse that text as JSON.
-    """
+async def generate_questions(request: QuestionRequest):
+
+    # ── Look up seniority context ────────────────────────────
+    # Default to "mid" context if an unexpected level is passed
+    seniority_context = SENIORITY_CONTEXT.get(
+        request.experience_level.lower(),
+        SENIORITY_CONTEXT["mid"]
+    )
+
+    print(f"[REQUEST] role={request.job_role!r} "
+          f"level={request.experience_level!r} "
+          f"stack={request.tech_stack!r}")
+
     try:
-        print(f"[REQUEST] role={request.job_role!r}"
-            f"level={request.experience_level}!r"
-            f"stack={request.tech_stack}!r")
-        
-        # ── Step 1: Run the LangChain chain ──────────────────
-        # .ainvoke() is the async version of .invoke()
-        # Always use async (ainvoke) inside FastAPI endpoints
+        # ── Run the chain ────────────────────────────────────
         raw_output = await chain.ainvoke({
             "job_role": request.job_role,
             "experience_level": request.experience_level,
-            "tech_stack": request.tech_stack
+            "tech_stack": request.tech_stack,
+            "seniority_context": seniority_context,
         })
 
-        print(f"[RAW OUTPUT] {raw_output}...")         # preview first 200 chars
+        print(f"[RAW OUTPUT PREVIEW] {raw_output[:300]}...")
 
-        # ── Step 2: Clean the output ─────────────────────────
-        # Gemini sometimes wraps JSON in markdown code fences
-        # like ```json ... ``` even when told not to.
-        # This strips those out before parsing.
+        # ── Clean markdown fences if present ─────────────────
         cleaned = raw_output.strip()
         if cleaned.startswith("```"):
-            # Remove first line (```json) and last line (```)
             lines = cleaned.split("\n")
             cleaned = "\n".join(lines[1:-1])
 
-        # ── Step 3: Parse JSON ───────────────────────────────
-        questions = json.loads(cleaned)
+        # ── Parse JSON ───────────────────────────────────────
+        data = json.loads(cleaned)
 
-        # ── Step 4: Return structured response ───────────────
+        # ── Convert each dict to a RichQuestion object ───────
+        # Pydantic can parse a dict directly with model_validate()
+        def parse_questions(raw_list: list) -> list[RichQuestion]:
+            return [RichQuestion.model_validate(q) for q in raw_list]
+
         return QuestionResponse(
-            job_role = request.job_role,
-            experience_level = request.experience_level,
-            tech_stack = request.tech_stack,
-            beginner_questions = questions.get("beginner_questions", []),
-            intermediate_questions = questions.get("intermediate_questions", []),
-            advanced_questions = questions.get("advanced_questions", [])
+            job_role=request.job_role,
+            experience_level=request.experience_level,
+            tech_stack=request.tech_stack,
+            beginner_questions=parse_questions(data.get("beginner", [])),
+            intermediate_questions=parse_questions(data.get("intermediate", [])),
+            advanced_questions=parse_questions(data.get("advanced", [])),
         )
 
     except json.JSONDecodeError as e:
-        # The LLM returned something that wasn't valid JSON
-        print(f"[JSON ERROR] {e}\nRaw output was:\n{raw_output}")
+        print(f"[JSON ERROR] {e}\nRaw:\n{raw_output}")
         raise HTTPException(
             status_code=500,
-            detail="AI returned malformed JSON. Try again."
+            detail="AI returned malformed JSON. Please try again."
         )
     except Exception as e:
-        # Any other error (network, API key, quota, etc.)
         print(f"[ERROR] {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Something went wrong: {str(e)}"
         )
-        
