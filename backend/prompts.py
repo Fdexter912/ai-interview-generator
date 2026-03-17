@@ -32,7 +32,7 @@ CANDIDATE PROFILE:
 - Level Definition: {seniority_context}
 
 YOUR TASK:
-Generate 4 interview questions for each of the three difficulty tiers below.
+Generate 5 interview questions for each of the three difficulty tiers below.
 Every question must be tightly scoped to the candidate's role and tech stack.
 
 DIFFICULTY TIERS:

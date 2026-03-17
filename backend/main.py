@@ -139,7 +139,10 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
 
 # ── Main endpoint ─────────────────────────────────────────────
 @app.post("/generate-questions", response_model=QuestionResponse)
-async def generate_questions(request: QuestionRequest):
+async def generate_questions(
+    request: QuestionRequest, 
+    current_user: User = Depends(get_current_user)
+    ):
 
     # ── Look up seniority context ────────────────────────────
     # Default to "mid" context if an unexpected level is passed
