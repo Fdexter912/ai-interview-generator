@@ -7,7 +7,7 @@
 //   onToggle  (function) — called when toggle button is clicked
 
 
-const Header = ({ darkMode, onToggle }) => {
+const Header = ({ darkMode, onToggle, onLogout, userEmail }) => {
   return (
     <header style={styles.header}>
       {/* ── Brand ─────────────────────────────────────────── */}
@@ -21,6 +21,12 @@ const Header = ({ darkMode, onToggle }) => {
         </div>
       </div>
 
+      <div style={styles.actions}>
+        {userEmail && (
+          <span style={styles.userEmail}>{userEmail}</span>
+        )}
+      
+
       {/* ── Theme toggle ──────────────────────────────────── */}
       {/* Clicking this button calls onToggle in App.jsx,
           which flips the darkMode state and updates
@@ -33,6 +39,13 @@ const Header = ({ darkMode, onToggle }) => {
         <span style={styles.toggleIcon}>{darkMode ? '☀️' : '🌙'}</span>
         <span style={styles.toggleLabel}>{darkMode ? 'Light' : 'Dark'}</span>
       </button>
+
+    {onLogout && (
+      <button onClick={onLogout} style={styles.logoutBtn}>
+        Sign Out
+      </button>
+    )}
+    </div>
     </header>
   );
 };
@@ -83,7 +96,16 @@ const styles = {
     color: 'var(--text-muted)',
     marginTop: '3px',
     fontWeight: 300,
-    letterSpacing: '0.01em',
+  },
+  actions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  userEmail: {
+    fontSize: '0.8rem',
+    color: 'var(--text-muted)',
+    fontWeight: 300,
   },
   toggle: {
     display: 'flex',
@@ -103,6 +125,19 @@ const styles = {
   },
   toggleIcon: { fontSize: '1rem' },
   toggleLabel: { letterSpacing: '0.02em' },
-};
+  logoutBtn: {
+    padding: '10px 18px',
+    borderRadius: '50px',
+    border: '1px solid var(--border)',
+    background: 'transparent',
+    color: 'var(--text-secondary)',
+    fontSize: '0.85rem',
+    fontFamily: 'var(--font-body)',
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+}
+
 
 export default Header;

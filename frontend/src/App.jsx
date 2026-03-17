@@ -6,6 +6,9 @@ import { useState, useEffect } from 'react'
 import Header from './components/Header'
 import InputForm from './components/InputForm'
 import QuestionCard from './components/QuestionCard'
+import AuthPage from './components/AuthPage'
+
+const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 function App() {
   // ── Global state ─────────────────────────────────────────
@@ -13,6 +16,28 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [questions, setQuestions] = useState(null)  // null = no results yet
   const [error, setError] = useState(null)
+
+  // ── Auth state ────────────────────────────────────────────
+  // On load, check localStorage for an existing token so the
+  // user stays logged in after a page refresh.
+  const [token, setToken] = useState(
+    () => localStorage.getItem('access_token' | null)
+  )
+  const [userEmail, setUserEmail] = useState(null)
+
+  // Decode the email from the token payload on mount
+  useEffect(() => {
+    if(token) {
+      try {
+        // JWT payload is the middle section, base-64 encoded
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        setUserEmail(payload.sub)
+      } catch {
+        // Token is malformed - clear it
+        handleLogOut()
+      }
+    }
+  }, [token])
 
   // ── Sync dark mode with <html data-theme="..."> ──────────
   // Whenever darkMode state changes, we update the HTML attribute.
@@ -24,6 +49,17 @@ function App() {
       darkMode ? 'dark' : 'light'
     )
   }, [darkMode])
+
+  const handleAuthSuccess = (newToken) => {
+    setToken(newToken)
+  }
+
+  const handleLogOut = () => {
+    localStorage.removeItem('access_token')
+    setToken(null)
+    setUserEmail(null)
+    setQuestions(null)
+  }
 
   // ── Handle form submission ────────────────────────────────
   // Stage 3: this just simulates a response.
@@ -37,7 +73,7 @@ function App() {
       // fetch() sends an HTTP request.
       // We use /api/generate-questions (not the full localhost URL)
       // because Vite's proxy will forward it to FastAPI.
-      const response = await fetch('/api/generate-questions', {
+      const response = await fetch(`${API_URL}/generate-questions`, {
         method: 'POST',
 
         // Tell the server we're sending JSON
@@ -55,6 +91,13 @@ function App() {
       })
 
       // ── Handle HTTP errors ──────────────────────────────
+
+      // If token expired, force logout and show auth page
+      if (response.status === 401) {
+        handleLogout()
+        throw new Error('Session expired. Please sign in again.')
+      }
+
       // fetch() does NOT throw on 4xx/5xx — you must check manually.
       // response.ok is true for status codes 200-299.
       if (!response.ok) {
@@ -83,10 +126,24 @@ function App() {
     }
   }
 
+  // ── If not logged in, show auth page ─────────────────────
+  if (!token) {
+    return (
+      <>
+        {/* Keep the gradient background on auth page too */}
+        <Header
+          darkMode={darkMode}
+          onToggle={() => setDarkMode(!darkMode)}
+        />
+        <AuthPage onAuthSuccess={handleAuthSuccess} />
+      </>
+    )
+  }
+
   return (
     <div style={styles.app}>
       {/* ── Header with dark mode toggle ───────────────── */}
-      <Header darkMode={darkMode} onToggle={() => setDarkMode(!darkMode)} />
+      <Header darkMode={darkMode} onToggle={() => setDarkMode(!darkMode)} onLogout={handleLogOut} userEmail={userEmail} />
 
       <main style={styles.main}>
         {/* ── Input form ─────────────────────────────────── */}

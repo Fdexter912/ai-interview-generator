@@ -5,12 +5,20 @@
 import os
 import json
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema.output_parser import StrOutputParser
+
+from database import engine, get_db, Base
+from models import User
+from auth import (
+    hash_password, verify_password,
+    create_access_token, get_current_user
+)
 
 from prompts import INTERVIEW_PROMPT_TEMPLATE, SENIORITY_CONTEXT
 
@@ -18,6 +26,12 @@ load_dotenv()
 
 if not os.getenv("GOOGLE_API_KEY"):
     raise ValueError("GOOGLE_API_KEY not found. Did you create a .env file?")
+
+# ── Create database tables on startup ────────────────────────
+# This reads all models that inherit from Base and creates
+# their tables if they don't already exist. Safe to run
+# every time — it won't drop existing tables.
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="AI Interview Question Generator",
@@ -39,7 +53,20 @@ llm = ChatGoogleGenerativeAI(
 
 chain = INTERVIEW_PROMPT_TEMPLATE | llm | StrOutputParser()
 
-# ── Request model ─────────────────────────────────────────────
+# ── Auth request/response models ─────────────────────────────
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+# ── Question model ─────────────────────────────────────────────
 class QuestionRequest(BaseModel):
     job_role: str
     experience_level: str
@@ -67,6 +94,48 @@ class QuestionResponse(BaseModel):
 @app.get("/")
 def root():
     return {"message": "AI Interview Question Generator v3 is running!"}
+
+# ── Register ──────────────────────────────────────────────────
+@app.post("/register", status_code=201)
+def register(request: RegisterRequest, db: Session = Depends(get_db)):
+    print(f"[REGISTER] email={request.email!r} password_len={len(request.password)}")
+    # Check if email exists already
+    existing = db.query(User).filter(User.email == request.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered.")
+    
+    # Validate password length
+    if(len(request.password) < 6):
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    
+    # Hash the password and save the user
+    user = User(
+        email = request.email,
+        hashed_password = hash_password(request.password)  
+    )
+
+    db.add(user)
+    db.commit()
+
+    return {"message": "Account created successfully"}
+
+# ── Login ─────────────────────────────────────────────────────
+@app.post("/login", response_model=TokenResponse)
+def login(request: LoginRequest, db: Session = Depends(get_db)):
+    # Look up the user in the DB
+    user = db.query(User).filter(User.email == request.email).first()
+
+    # Check both existence and password in one step to avoid
+    # leaking information about whether an email exists
+    if not user or not verify_password(request.password, user.hashed_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password"
+        )
+    
+    # Create and return the JWT token
+    token = create_access_token({"sub": user.email})
+    return TokenResponse(access_token=token)
 
 # ── Main endpoint ─────────────────────────────────────────────
 @app.post("/generate-questions", response_model=QuestionResponse)
