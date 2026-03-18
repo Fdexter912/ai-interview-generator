@@ -46,13 +46,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    temperature=0.7,
-)
-
-chain = INTERVIEW_PROMPT_TEMPLATE | llm | StrOutputParser()
-
 # ── Auth request/response models ─────────────────────────────
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -89,6 +82,18 @@ class QuestionResponse(BaseModel):
     beginner_questions: list[RichQuestion]
     intermediate_questions: list[RichQuestion]
     advanced_questions: list[RichQuestion]
+
+# LLM Lazy Initialization
+_chain = None
+def get_chain():
+    global _chain
+    if _chain is None:
+        llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        temperature=0.7,
+        )
+        _chain = INTERVIEW_PROMPT_TEMPLATE | llm | StrOutputParser()
+    return _chain
 
 # ── Health check ──────────────────────────────────────────────
 @app.get("/")
@@ -157,6 +162,7 @@ async def generate_questions(
 
     try:
         # ── Run the chain ────────────────────────────────────
+        chain = get_chain()
         raw_output = await chain.ainvoke({
             "job_role": request.job_role,
             "experience_level": request.experience_level,
