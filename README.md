@@ -274,10 +274,10 @@ The pipeline requires these GitHub Secrets:
 
 ```bash
 # Build and push images
-docker build -t YOUR_USERNAME/interview-backend:latest ./backend
-docker build -t YOUR_USERNAME/interview-frontend:latest ./frontend
-docker push YOUR_USERNAME/interview-backend:latest
-docker push YOUR_USERNAME/interview-frontend:latest
+docker build -t fahamaabdulrehman/interview-backend:latest ./backend
+docker build -t fahamaabdulrehman/interview-frontend:latest ./frontend
+docker push fahamaabdulrehman/interview-backend:latest
+docker push fahamaabdulrehman/interview-frontend:latest
 ```
 
 ---
