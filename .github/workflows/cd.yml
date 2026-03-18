@@ -40,44 +40,21 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Extract metadata for frontend
-        id: meta-frontend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/interview-frontend
-          tags: |
-            type=raw,value=latest
-            type=sha,prefix=sha-
+      # ── Frontend: no Docker needed ────────────────────────
+      # Render builds it directly from source code
+      # We just trigger a redeploy via Render's deploy hook
 
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: true
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          build-args: |
-            VITE_API_URL=${{ secrets.VITE_API_URL }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      # ── Trigger Render redeploys ──────────────────────────
+      - name: Deploy backend to Render
+        run: |
+          curl -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}"
 
-      # ── Deploy to Railway using CLI ───────────────────────
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy backend to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
-        run: railway redeploy --service interview-backend --yes
-
-      - name: Deploy frontend to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
-        run: railway redeploy --service interview-frontend --yes
+      - name: Deploy frontend to Render
+        run: |
+          curl -X POST "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}"
 
       - name: Deployment summary
         run: |
           echo "✅ Deployment complete!"
-          echo "Backend: ${{ steps.meta-backend.outputs.tags }}"
-          echo "Frontend: ${{ steps.meta-frontend.outputs.tags }}"
+          echo "Backend: https://interview-backend-latest.onrender.com"
+          echo "Frontend: https://ai-interview-generator-o8ml.onrender.com"
