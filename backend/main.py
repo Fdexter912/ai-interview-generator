@@ -25,7 +25,7 @@ from prompts import INTERVIEW_PROMPT_TEMPLATE, SENIORITY_CONTEXT
 load_dotenv()
 
 if not os.getenv("GOOGLE_API_KEY"):
-    raise ValueError("GOOGLE_API_KEY not found. Did you create a .env file?")
+    print("WARNING: GOOGLE_API_KEY not found. AI features will not work.")
 
 # ── Create database tables on startup ────────────────────────
 # This reads all models that inherit from Base and creates
