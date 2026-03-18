@@ -4,7 +4,7 @@
 
 import { useState } from 'react'
 
-const BASE_URL = import.meta.env.VITE_API_URL || '/api'
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://interview-backend-latest.onrender.com'
 
 // Props:
 //   onAuthSuccess (function) — called with token when login succeeds

@@ -8,7 +8,7 @@ import InputForm from './components/InputForm'
 import QuestionCard from './components/QuestionCard'
 import AuthPage from './components/AuthPage'
 
-const API_URL = import.meta.env.VITE_API_URL || '/api'
+const API_URL = import.meta.env.VITE_API_URL || 'https://interview-backend-latest.onrender.com'
 
 function App() {
   // ── Global state ─────────────────────────────────────────
@@ -79,6 +79,7 @@ function App() {
         // Tell the server we're sending JSON
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
 
         // JSON.stringify converts the JS object to a JSON string
